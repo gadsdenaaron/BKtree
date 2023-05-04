@@ -1,189 +1,105 @@
-def _edit_dist_init(len1, len2):
-    lev = []
-    for i in range(len1):
-        lev.append([0] * len2)  # initialize 2D array to zero
-    for i in range(len1):
-        lev[i][0] = i  # column 0: 0,1,2,3,4,...
-    for j in range(len2):
-        lev[0][j] = j  # row 0: 0,1,2,3,4,...
-    return lev
 
 
-def _last_left_t_init(sigma):
-    return {c: 0 for c in sigma}
-
-
-def _edit_dist_step(
-    lev, i, j, s1, s2, last_left, last_right, substitution_cost=1, transpositions=False
-):
-    c1 = s1[i - 1]
-    c2 = s2[j - 1]
-
-    # skipping a character in s1
-    a = lev[i - 1][j] + 1
-    # skipping a character in s2
-    b = lev[i][j - 1] + 1
-    # substitution
-    c = lev[i - 1][j - 1] + (substitution_cost if c1 != c2 else 0)
-
-    # transposition
-    d = c + 1  # never picked by default
-    if transpositions and last_left > 0 and last_right > 0:
-        d = lev[last_left - 1][last_right - 1] + i - last_left + j - last_right - 1
-
-    # pick the cheapest
-    lev[i][j] = min(a, b, c, d)
-
-
-def edit_distance(s1, s2, substitution_cost=1, transpositions=False):
-    """
-    Calculate the Levenshtein edit-distance between two strings.
-    The edit distance is the number of characters that need to be
-    substituted, inserted, or deleted, to transform s1 into s2.  For
-    example, transforming "rain" to "shine" requires three steps,
-    consisting of two substitutions and one insertion:
-    "rain" -> "sain" -> "shin" -> "shine".  These operations could have
-    been done in other orders, but at least three steps are needed.
-    Allows specifying the cost of substitution edits (e.g., "a" -> "b"),
-    because sometimes it makes sense to assign greater penalties to
-    substitutions.
-    This also optionally allows transposition edits (e.g., "ab" -> "ba"),
-    though this is disabled by default.
-    :param s1, s2: The strings to be analysed
-    :param transpositions: Whether to allow transposition edits
-    :type s1: str
-    :type s2: str
-    :type substitution_cost: int
-    :type transpositions: bool
-    :rtype: int
-    """
-    # set up a 2-D array
-    len1 = len(s1)
-    len2 = len(s2)
-    lev = _edit_dist_init(len1 + 1, len2 + 1)
-
-    # retrieve alphabet
-    sigma = set()
-    sigma.update(s1)
-    sigma.update(s2)
-
-    # set up table to remember positions of last seen occurrence in s1
-    last_left_t = _last_left_t_init(sigma)
-
-    # iterate over the array
-    # i and j start from 1 and not 0 to stay close to the wikipedia pseudo-code
-    # see https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance
-    for i in range(1, len1 + 1):
-        last_right_buf = 0
-        for j in range(1, len2 + 1):
-            last_left = last_left_t[s2[j - 1]]
-            last_right = last_right_buf
-            if s1[i - 1] == s2[j - 1]:
-                last_right_buf = j
-            _edit_dist_step(
-                lev,
-                i,
-                j,
-                s1,
-                s2,
-                last_left,
-                last_right,
-                substitution_cost=substitution_cost,
-                transpositions=transpositions,
-            )
-        last_left_t[s1[i - 1]] = i
-    return lev[len1][len2]
-
+from typing import Any, Callable, List, Tuple
 class BKtree:
+    """
+    Implementation of a Burkhard-Keller tree (used as a dictionary) for use in problems involving discret metric spaces, for example levenshtein distance on strings
+    You can use a BK tree ti fasten the runtime of a problem involving a search for all the strings at most D (edit) distance away from search string S in a list L
+    by first making a BK tree of L and then searching the BK tree for S.
+    """
 
-    """Python Implementation of a Burkhard-Keler tree"""
-
-    def __init__(self, distance_function):
+    def __init__(self, distance_function: Callable[[str, str], int]) -> None:
         self.distance_function = distance_function
         self.root = None
-        self.itemset = {}
+        self.itemDict = {}
+        self.isempty = True
 
-    def search(self, key_string: str):
-        
-        if key_string in self.itemset:
-            return self.itemset[key_string]
+    def insert(self, key_string: str, value: Any) -> None:
+        """
+        Inserts a string into the BKtree
 
+        Args:
+            key_string: The string to be inserted.
+            value     : The corresponding vlaue of the given key_string.
+
+        Returns:
+            This method does not return anyuthing, instead modifies the given tree
+
+        Raises:
+            KeyError if the key string supplied is already in the tree.
+        """
+
+        if key_string in self.itemDict:
+            raise KeyError(f"{key_string} already in the BKtree cannot use insert to reassign dictionary values")
         else:
-            pass
+            self.itemDict[key_string] = value
 
-    def insert(self, key_string: str, value):
-        
-        if self.root == None:
-            self.itemset[key_string] = value
-            self.root = BKnode(key_string, value, self.distance_function)
-        else:
-            if key_string in self.itemset:
-                raise KeyError
-
+            if self.isempty:
+                self.rootNode = BKnode(key_string, self.distance_function)
+                self.isempty  = False
+            
             else:
-                self.itemset[key_string] = value
-                self.root.add_child(key_string, value)
+                self.rootNode.add_child(key_string)
 
-    def update(self, key_string: str, new_value):
-        
-        if self.root == None:
-            raise KeyError
-        else:
-            self.root.update_child(key_string, new_value)
+    def find_all_similar(self, search_word:str, limit: int) -> List[Any]:
+        """
+        Searches the BKtree for the seach_word, returns a list if possible (key, value, distance) tuples
 
-    def depth(self):
-        pass
+        Args:
+        search_word: the key to seach for in the dictionary
+        limit: an integer
 
-    def __len__(self):
-        pass
+        Returns:
+            A list of (key, value, distance) tuples of similar words from the tree
+        """
 
-    def __repr__(self):
-        return f"{self.root}"
+        possible_words = self.rootNode.find(search_word, limit)
+        return [(key, self.itemList[key], distance) for key, distance in possible_words]
 
-    def __contains__(self):
+
+    def find_closest_match():
         pass
 
     
+    
 class BKnode:
 
-    def __init__(self, key_string: str, value, distance_function):
+    def __init__(self, key_string: str, distance_function: Callable[[str, str], int]) -> None:
         self.key_string = key_string
-        self.value = value
         self.children = {}
         self.distance_function = distance_function
 
-    def add_child(self, child_string: str, child_value: str):
+    def add_child(self, child_string: str) -> None:
         
         distance = self.distance_function(child_string, self.key_string)
 
         if distance in self.children:
-            self.children[distance].add_child(child_string, child_value)
+            self.children[distance].add_child(child_string)
         else:
-            self.children[distance] = BKnode(child_string, child_value, self.distance_function)
+            self.children[distance] = BKnode(child_string, self.distance_function)
 
-    def update_child(self, key_string: str, new_value):
-        
-        if self.key_string == key_string:
-            self.value = new_value
+    def find(self, search_word: str, limit: int) -> List[Tuple[str, int]]:
 
-        else:
-            distance = self.distance_function(key_string, self.key_string)
+        d = self.distance_function(self.key_string, search_word)
+        return_list = []
 
-            if distance in self.children:
-                self.children[distance].update_child(key_string, new_value)
-            else:
-                raise KeyError
+        if d<limit:
+            return_list.append((self.key_string, d))
+        if self.children:
+
+            for key in self.children.keys():
+                if key>d-limit or key<d+limit:
+                    next_node = self.children[key].find(search_word, limit)
+                    if next_node is not None:
+                        return_list += next_node
+        return return_list
             
     def __repr__(self):
-        return f"key - {self.key_string}, value - {self.value}, children - {self.children}"
+        return f"key - {self.key_string}, children - {self.children}"
 
+    def __eq__(self, other) -> bool:
 
+        return self.key_string == other.key_string and self.childen == other.children and self.distance_function == other.distance_function
 
-a = BKtree(edit_distance)
-a.insert("hello", 5)
-a.insert("hi", 1)
-a.update("hello", 4)
-a.update("hi", 7)
-
-for x in [("test", 3), ("foodie", 7), ("Boobies", 70)]:
-    a.insert(*x)
+if __name__ == "__main__":
+    pass
